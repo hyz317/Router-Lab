@@ -106,6 +106,8 @@ int main() {
       int res = HAL_SendIPPacket(if_index, packet, len, dst_mac);
       if (res == 0) {
         printf("Packet sent\n");
+        printMAC(dst_mac);
+        printf("\n");
       } else {
         printf("Sent failed: %d\n", res);
       }

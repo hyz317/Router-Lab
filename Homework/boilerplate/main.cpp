@@ -8,10 +8,11 @@
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
-extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
+extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t metric = 15);
 extern bool forward(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
+extern uint32_t swapInt32(uint32_t value);
 
 extern void encapRip(RipPacket* resp);
 extern void printRouteTable();
@@ -89,6 +90,7 @@ int main(int argc, char *argv[]) {
       // ref. RFC2453 3.8
       // multicast MAC for 224.0.0.9 is 01:00:5e:00:00:09
       // change here
+      printRouteTable();
       macaddr_t dest_mac;
       HAL_ArpGetMacAddress(0, (in_addr_t)((9 << 24) | 224), dest_mac);
       printMAC(dest_mac);
@@ -125,7 +127,6 @@ int main(int argc, char *argv[]) {
       output[23] = 0x08;
       output[24] = ((rip_len + 8) >> 8);
       output[25] = (rip_len + 8) & 0xff;
-      printf("%d %d\n", output[24], output[25]);
       output[26] = output[27] = 0;
 
       for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
@@ -135,6 +136,12 @@ int main(int argc, char *argv[]) {
         output[15] = (addrs[i] >> 24) & 0xff;
         validateIPChecksum(output, rip_len + 20 + 8);
         HAL_SendIPPacket(i, output, rip_len + 20 + 8, dest_mac);
+        // printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, i);
+        // printf("\nData: ");
+        // for (int i = 0; i < rip_len + 20 + 8; i++) {
+        //   printf("%02X ", output[i]);
+        // }
+        // printf("\n");
       }
       // end change
       printf("30s Timer\n");
@@ -177,6 +184,12 @@ int main(int argc, char *argv[]) {
       printf("Invalid IP Checksum\n");
       continue;
     }
+    //不是RIP协议包
+    // if (packet[11] != 0x11) {
+    //   printf("packet[11]: %d\n", packet[11]);
+    //   HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
+    //   continue;
+    // }
     in_addr_t src_addr, dst_addr;
     // extract src_addr and dst_addr from packet
     // big endian
@@ -255,6 +268,12 @@ int main(int argc, char *argv[]) {
           validateIPChecksum(output, rip_len + 20 + 8);
           // send it back
           HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
+          printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, if_index);
+          printf("\nData: ");
+          for (int i = 0; i < rip_len + 20 + 8; i++) {
+            printf("%02X ", output[i]);
+          }
+          printf("\n");
         } else {
           // 3a.2 response, ref. RFC2453 3.9.2
           // update routing table
@@ -263,6 +282,40 @@ int main(int argc, char *argv[]) {
           // what is missing from RoutingTableEntry?
           // TODO: use query and update
           // triggered updates? ref. RFC2453 3.10.1
+          uint32_t addr, len, if_index, nexthop, metric;
+          for (int i = 0; i < rip.numEntries; i++) {
+            printf("rip.entries[i].metric: %08x\n", rip.entries[i].metric);
+            if (query(rip.entries[i].addr, &nexthop, &if_index, rip.entries[i].metric)) {
+              // if (metric > rip.entries[i].metric + 1) {
+
+              // }
+            } else {
+              for (len = 1; len <= 32; len++) {
+                if ((rip.entries[i].mask >> len) == 0)
+                  break;
+              }
+              for (int j = 0; j < N_IFACE_ON_BOARD; j++) {
+                if ((src_addr & rip.entries[i].mask) == (addrs[j] & rip.entries[i].mask)) {
+                  if_index = j;
+                  break;
+                }
+              }
+              printf("mask: %08x\n", rip.entries[i].mask);
+              printf("len: %d\n", len);
+              printf("%d if_index: %08x src_addr: %08x\n", if_index, addrs[if_index], src_addr);
+              printf("%08x == %08x: %d \n", src_addr & rip.entries[i].mask, addrs[if_index] & rip.entries[i].mask, (src_addr & rip.entries[i].mask) == (addrs[if_index] & rip.entries[i].mask));
+              RoutingTableEntry entry = {
+                .addr = rip.entries[i].addr,
+                .len = len,
+                .if_index = if_index,
+                .nexthop = src_addr,
+                .metric = swapInt32(swapInt32(rip.entries[i].metric) + 1 > 16 ? 16 : swapInt32(rip.entries[i].metric) + 1),
+                .timestamp = HAL_GetTicks()
+              };
+              update(true, entry);
+              printRouteTable();
+            }
+          }
         }
       }
     } else {
@@ -283,12 +336,15 @@ int main(int argc, char *argv[]) {
           // update ttl and checksum
           forward(output, res);
           // TODO: you might want to check ttl=0 case
+          printf("ttl: %u\n", output[8]);
           if (output[8] != 0)
             HAL_SendIPPacket(dest_if, output, res, dest_mac);
         } else {
           // not found
           // you can drop it
-          printf("ARP not found for %x\n", nexthop);
+          printf("dest_if: %d\n", dest_if);
+          printf("%d ARP not found for ", HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac));
+          printIP(nexthop);
         }
       } else {
         // not found

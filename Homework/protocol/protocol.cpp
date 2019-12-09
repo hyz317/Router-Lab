@@ -1,6 +1,9 @@
 #include "rip.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+void printIP(uint32_t ip);
 
 /*
   在头文件 rip.h 中定义了如下的结构体：
@@ -45,7 +48,42 @@
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   // TODO:
-  return false;
+  unsigned int ipLen = (packet[0] & 0xF) * 4;
+  unsigned int udpLen = ((unsigned int)packet[ipLen + 4] << 8) + packet[ipLen + 5];
+
+  unsigned int command = packet[ipLen + 8];
+  unsigned int family = ((unsigned int)packet[ipLen + 12] << 8) + packet[ipLen + 13];
+  unsigned int version = packet[ipLen + 9];
+  unsigned int zero = ((unsigned int)packet[ipLen + 10] << 8) + packet[ipLen + 11];
+
+  unsigned int num = (udpLen - 12) / 20;
+  unsigned int begin = ipLen + 12;
+
+  if ((packet[2] << 8) + packet[3] > len)
+    return false;
+  if (version != 2 || zero != 0)
+    return false;
+  if (!((command == 2 && family == 2) || (command == 1 && family == 0)))
+    return false;
+
+  output->numEntries = num;
+  output->command = command;
+  for (int i = 0; i < num; i++) {
+    unsigned int metric = ((unsigned int)packet[begin + 16] << 24) + ((unsigned int)packet[begin + 17] << 16) + ((unsigned int)packet[begin + 18] << 8) + (unsigned int)packet[begin + 19];
+    unsigned int netmask = ((unsigned int)packet[begin + 8] << 24) + ((unsigned int)packet[begin + 9] << 16) + ((unsigned int)packet[begin + 10] << 8) + (unsigned int)packet[begin + 11];
+    netmask = ~netmask + 1;
+    if (metric < 1 || metric > 16)
+      return false;
+    if ((netmask & (netmask - 1)) != 0)
+      return false;
+    output->entries[i].addr = ((unsigned int)packet[begin + 7] << 24) + ((unsigned int)packet[begin + 6] << 16) + ((unsigned int)packet[begin + 5] << 8) + (unsigned int)packet[begin + 4];
+    output->entries[i].mask = ((unsigned int)packet[begin + 11] << 24) + ((unsigned int)packet[begin + 10] << 16) + ((unsigned int)packet[begin + 9] << 8) + (unsigned int)packet[begin + 8];
+    output->entries[i].metric = ((unsigned int)packet[begin + 19] << 24) + ((unsigned int)packet[begin + 18] << 16) + ((unsigned int)packet[begin + 17] << 8) + (unsigned int)packet[begin + 16];
+    output->entries[i].nexthop = ((unsigned int)packet[begin + 15] << 24) + ((unsigned int)packet[begin + 14] << 16) + ((unsigned int)packet[begin + 13] << 8) + (unsigned int)packet[begin + 12];
+
+    begin += 20;
+  }
+  return true;
 }
 
 /**
@@ -60,5 +98,43 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
  */
 uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
   // TODO:
-  return 0;
+  unsigned int len = rip->numEntries * 20 + 4;
+  buffer[0] = rip->command;
+  buffer[1] = 2;
+  buffer[2] = buffer[3] = 0;
+  unsigned int begin = 4;
+  for (int i = 0; i < rip->numEntries; i++) {
+    buffer[begin] = 0;
+    if (rip->command == 1)
+      buffer[begin + 1] = 0;
+    else
+      buffer[begin + 1] = 2;
+    buffer[begin + 2] = buffer[begin + 3] = 0;
+
+    buffer[begin + 4] = rip->entries[i].addr & 0x000000ff;
+    buffer[begin + 5] = (rip->entries[i].addr >> 8) & 0x000000ff;
+    buffer[begin + 6] = (rip->entries[i].addr >> 16) & 0x000000ff;
+    buffer[begin + 7] = (rip->entries[i].addr >> 24) & 0x000000ff;
+    printIP(rip->entries[i].addr);
+
+    buffer[begin + 8] = rip->entries[i].mask & 0x000000ff;
+    buffer[begin + 9] = (rip->entries[i].mask >> 8) & 0x000000ff;
+    buffer[begin + 10] = (rip->entries[i].mask >> 16) & 0x000000ff;
+    buffer[begin + 11] = (rip->entries[i].mask >> 24) & 0x000000ff;
+    printIP(rip->entries[i].mask);
+
+    buffer[begin + 12] = rip->entries[i].nexthop & 0x000000ff;
+    buffer[begin + 13] = (rip->entries[i].nexthop >> 8) & 0x000000ff;
+    buffer[begin + 14] = (rip->entries[i].nexthop >> 16) & 0x000000ff;
+    buffer[begin + 15] = (rip->entries[i].nexthop >> 24) & 0x000000ff;
+    printIP(rip->entries[i].nexthop);
+
+    buffer[begin + 16] = rip->entries[i].metric & 0x000000ff;
+    buffer[begin + 17] = (rip->entries[i].metric >> 8) & 0x000000ff;
+    buffer[begin + 18] = (rip->entries[i].metric >> 16) & 0x000000ff;
+    buffer[begin + 19] = (rip->entries[i].metric >> 24) & 0x000000ff;
+
+    begin += 20;
+  }
+  return len;
 }

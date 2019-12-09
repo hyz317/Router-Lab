@@ -23,7 +23,9 @@ int main(int argc, char *argv[]) {
         .addr = addr,
         .len = len,
         .if_index = 0,
-        .nexthop = 0
+        .nexthop = 0,
+        .metric = 0,
+        .timestamp = 0
       };
       update(false, entry);
     } else if (buffer[0] == 'Q') {
