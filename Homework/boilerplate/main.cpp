@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
       dst_is_me = true;
     }
 
-    /*if (dst_is_me) {
+    if (dst_is_me) {
       // 3a.1
       RipPacket rip;
       // check and validate
@@ -296,7 +296,7 @@ int main(int argc, char *argv[]) {
         printf("IP not found for ");
         printIP(src_addr);
       }
-    }*/
+    }
   }
   return 0;
 }
