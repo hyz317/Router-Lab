@@ -1,6 +1,6 @@
 # Router-Lab
 
-最后更新：2019/12/10 8:50 p.m.
+最后更新：2019/12/11 12:40 p.m.
 
 <details>
     <summary> 目录 </summary>
@@ -116,7 +116,7 @@ HAL 即 Hardware Abstraction Layer 硬件抽象层，顾名思义，是隐藏了
 2. `HAL_GetTicks`：获取从启动到当前时刻的毫秒数
 3. `HAL_ArpGetMacAddress`：从 ARP 表中查询 IPv4 地址对应的 MAC 地址，在找不到的时候会发出 ARP 请求
 4. `HAL_GetInterfaceMacAddress`：获取指定网口上绑定的 MAC 地址
-5. `HAL_ReceiveIPPacket`：从指定的若干个网口中读取一个 IPv4 报文，并得到源 MAC 地址和目的 MAC 地址等信息
+5. `HAL_ReceiveIPPacket`：从指定的若干个网口中读取一个 IPv4 报文，并得到源 MAC 地址和目的 MAC 地址等信息；它还会在内部处理 ARP 表的更新和响应，需要定期调用
 6. `HAL_SendIPPacket`：向指定的网口发送一个 IPv4 报文
 
 这些函数的定义和功能都在 `router_hal.h` 详细地解释了，请阅读函数前的文档。为了易于调试，HAL 没有实现 ARP 表的老化，你可以自己在代码中实现，并不困难。
@@ -250,10 +250,12 @@ R3:
 我们将会逐项检查下列内容：
 
 * PC1 是否与 PC2 能够正常通信：使用 `ping` 测试 ICMP、`curl` 测试 TCP 连接
-* R2 的转发是否通过 HAL 完成，而非 Linux 自带的路由转发功能：使用 `ip a` 命令确认连接 R1 和 R3 的网口上没有配置 IP 地址
-* R1、R3 上的 RIP 转发表是否正确：包括 RIP metric 等信息，从 R1 和 R3 上 运行的 BIRD 输出得到
-* R2 向 R1、R3 发出的 RIP 协议报文是否正确：包括是否进行询问、响应请求，以及是否实现了水平分裂（split horizon）算法，在 R1 和 R3 上用 Wireshark 抓包检查
-* R2 上的 RIP 路由表、转发表是否正确：需要你定期或者每次收到报文时打印最新的 RIP 路由表、系统转发表（见 FAQ 中对于路由表和转发表的讨论），格式自定
+* R2 的转发是否通过 HAL 完成，而非 Linux 自带的路由转发功能：在 R2 上使用 `ip a` 命令确认连接 R1 和 R3 的网口上没有配置 IP 地址
+* R1、R3 上的 RIP 路由表是否正确：包括 RIP metric 等信息，从 R1 和 R3 上 运行的 BIRD 输出得到
+* R2 向 R1、R3 发出的 RIP 协议报文是否正确：包括是否响应了请求，以及是否实现了水平分裂（split horizon）算法，在 R1 和 R3 上用 Wireshark 抓包检查
+* R2 上的 RIP 路由表、转发表是否正确：需要你定期或者每次收到报文时打印最新的 RIP 路由表、系统转发表（见 FAQ 中对于路由表和转发表的讨论），格式自定，可以模仿 `ip route` 的输出格式
+
+在 `Setup` 目录下存放了验收时在 R1 和 R3 上配置的脚本。
 
 <details>
     <summary>为何不在 R2 上配置 IP 地址：192.168.3.2 和 192.168.4.1 </summary>
@@ -434,9 +436,12 @@ protocol device {
 protocol kernel {
     # 表示 BIRD 会把系统的路由表通过 RIP 发出去，也会把收到的 RIP 信息写入系统路由表
     # 你可以用 `ip route` 命令查看系统的路由表
+    # 退出 BIRD 后从系统中删除路由
     persist no;
+    # 从系统学习路由
     learn;
     ipv4 {
+        # 导出路由到系统
         export all;
     };
 }
@@ -464,22 +469,28 @@ protocol rip {
 <details>
     <summary> BIRD v1.6 配置 </summary>
 
-如果你用的是 v1.6 版本，有一些字段需要修改：
-
 ```
+# log "bird.log" all; # 可以将 log 输出到文件中
+# debug protocols all; # 如果要更详细的信息，可以打开这个
+
 router id 网口IP地址; # 随便写一个，保证唯一性即可
 
 protocol device {
 }
 
 protocol kernel {
-    learn;
+    # 表示 BIRD 会把系统的路由表通过 RIP 发出去，也会把收到的 RIP 信息写入系统路由表
+    # 你可以用 `ip route` 命令查看系统的路由表
+    # 退出 BIRD 后从系统中删除路由
     persist off;
+    # 从系统学习路由
+    learn;
+    # 导出路由到系统
     export all;
 }
 
 protocol static {
-    route 1.2.3.4/32 via "网口名称";
+    route 1.2.3.4/32 via "网口名称"; # 可以手动添加一个静态路由方便调试
 }
 
 protocol rip {
@@ -488,7 +499,7 @@ protocol rip {
     debug all;
     interface "网口名称" {
         version 2;
-        update time 5;
+        update time 5; # 5秒一次更新，方便调试
     };
 }
 ```
