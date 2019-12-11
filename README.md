@@ -1,6 +1,9 @@
 # Router-Lab
 
-最后更新：2019/12/09 05:15 p.m.
+最后更新：2019/12/10 8:50 p.m.
+
+<details>
+    <summary> 目录 </summary>
 
 * [如何使用框架](#如何使用框架)
     * [如何使用 HAL](#如何使用-hal)
@@ -21,6 +24,8 @@
 * [附录： make 命令的使用和 Makefile 的编写](#附录-make-命令的使用和-makefile-的编写)
 * [名词解释](#名词解释)
 * [项目作者](#项目作者)
+
+</details>
 
 
 这里是 2019 年网络原理课程原理课程实验采用的框架。它有以下的设计目标：
@@ -180,17 +185,21 @@ make grade # 也可以运行评分脚本，实际上就是运行python3 grade.py
 
 一般来说，你只需要把你修改的函数的整个文件提交到对应题目即可，如 `Homework/checksum/checksum.cpp` 提交到 `checksum` 题目中。如果通过了测试，你实现的这个函数之后就可以继续用在你的路由器的实现之中。
 
-
 需要注意的是，测试采用的数据并不会面面俱到，为了减少在真实硬件（如树莓派、FPGA）上调试的困难，建议同学们自行设计测试样例，这样最终成功的可能性会更高。
 
 ## 实验验收的流程
 
 实验一共有三个部分的要求，第一部分是实现 `Homework` 下面的几个题目，要求在 OJ 上提交并通过；第二部分是针对个人的测试，主要测试转发和RIP协议的细节；第三部分是针对组队的测试，只要保证连通性，即可通过，如果采用更加复杂的网络拓扑也能达到预期目标，可以得到加分。
 
+<details>
+    <summary> CIDR 表示方法 </summary>
+
 下面多次用到了 CIDR 的表示方法，格式是 a.b.c.d/len ，可能表示以下两种意义之一：
 
 1. 地址是 a.b.c.d ，并且最高 len 位和 a.b.c.d 相同的 IP 地址都在同一个子网中，常见于对于一个网口的 IP 地址的描述。如 192.168.100.14/24 表示 192.168.100.14 的地址，地址掩码为 255.255.255.0 ，183.173.233.233/17 表示 183.173.233.233 的地址，地址掩码为 255.255.128.0 。
 2. 描述一个地址段，此时 a.b.c.d 除了最高 len 位都为零，表示一个 IP 地址范围，常见于路由表。如 192.168.100.0/24 表示从 192.168.100.0 到 192.168.100.255 的地址范围，183.173.128.0/17 表示从 183.173.128.0 到 183.173.255.255 的地址范围。
+
+</details>
 
 ### 实验第一部分
 
@@ -246,7 +255,46 @@ R3:
 * R2 向 R1、R3 发出的 RIP 协议报文是否正确：包括是否进行询问、响应请求，以及是否实现了水平分裂（split horizon）算法，在 R1 和 R3 上用 Wireshark 抓包检查
 * R2 上的 RIP 路由表、转发表是否正确：需要你定期或者每次收到报文时打印最新的 RIP 路由表、系统转发表（见 FAQ 中对于路由表和转发表的讨论），格式自定
 
+<details>
+    <summary>为何不在 R2 上配置 IP 地址：192.168.3.2 和 192.168.4.1 </summary>
+
+1. Linux 有自己的网络栈，如果配置了这两个地址，Linux 的网络栈也会进行处理，如 ARP 响应，ICMP 响应和（可以开启的）转发功能
+2. 实验中你编写的路由器会运行在 R2 上，它会进行 ARP 响应（HAL 代码内实现）和 ICMP 响应（可选）和转发（你的代码实现），实际上做的和 Linux 网络栈的部分功能是一致的
+3. 为了保证确实是你编写的路由器在工作而不是 Linux 网络栈在工作，所以不在 R2 上配置这两个 IP 地址
+
+</details>
+
+必须实现的有：
+
+1. 转发功能，支持直连路由和间接路由，包括查表，TTL 减一，Checksum 更新并转到正确的 interface 出去。
+2. 周期性地向所有端口发送 RIP Response （建议在测试和验收时调为 5s），目标地址为 RIP 的组播地址。
+3. 对收到的 RIP Request 有相应的 RIP Response 进行回复，目标地址为 RIP Request 的源地址。
+4. 实现水平分割（split horizon）。
+5. 收到 RIP Response 时，对路由表进行维护。
+6. 定期或者在更新的时候向 stdout/stderr 打印最新的 RIP 路由表。
+
+可选实现的有（不加分，但对调试有帮助）：
+
+1. 对 ICMP Echo Request 进行 ICMP Echo Reply 的回复。
+2. 在查不到路由表的时候，回复 ICMP Host Unreachable。
+3. 在 TTL 减为 0 时，回复 ICMP Time Exceeded。
+4. 支持 RIP Entry 中 nexthop 不为 0 的情况。
+5. 在路由表出现更新的时候发送 RIP Response（完整或者增量），目标地址为 RIP 的组播地址。
+6. 在 split horizon 基础上实现 reverse poisoning 。
+7. 路由的失效（Invalid）和删除（Flush）计时器。
+8. 在发送的 RIP Response 出现不止 25 条 Entry 时拆分。
+9. 程序启动时向所有 interface 发送 RIP Request，目标地址为 RIP 的组播地址。
+
+不需要实现的有：
+
+1. ARP 的处理。
+2. IGMP 的处理。
+3. interface 状态的跟踪（UP/DOWN 切换）。
+
 此外，我们还将使用 `iperf3` 工具分别测试 PC1 和 PC2 双向进行 TCP 和 UDP 传输的速率。如果你的转发性能较高，可以获得额外的加分。同时，我们可能会进行代码和知识点的抽查。
+
+<details>
+    <summary> 可供参考的例子 </summary>
 
 我们提供了 `host0.pcap` 和 `host1.pcap` ，分别是在 R1 和 R3 抓包的结果，模拟了实验的过程：
 
@@ -278,11 +326,13 @@ R3:
 19. R1 把 ICMP 包发给 PC1，目标 MAC 地址为 192.168.1.2 对应的 MAC 地址，源 MAC 地址为 192.168.1.1 对应的 MAC 地址。
 20. PC1 上 ping 显示成功。
 
+</details>
+
 ### 实验第三部分
 
 第三部分是针对组队的测试，一个组一般是三个人，网络拓扑与单人测试相同，只不过此时 R1、R2、R3 分别是三位同学的树莓派，我们会在验收前几天的某一时刻随机定下每组中哪一位同学分别对应 R1 R2 R3 的哪一个，所以同学们在测试的时候尽量测试各种组合。在这个环节中，只通过 `ping` 检查连通性，PC1 和 PC2 可以正常互通即可。
 
-如果想尝试更加复杂的网络拓扑，同学可以选择在 R1 和 R3 直接再连一条线（组成了环形网络），如果在这种情况下仍然可以实现 PC1 和 PC2 的连通，可以得到一定的加分。
+如果想尝试更加复杂的网络拓扑，同学可以选择在 R1 和 R3 直接再连一条线（组成了环形网络，配置的 IP 地址自定），如果在这种情况下仍然可以实现 PC1 和 PC2 的连通，可以得到一定的加分。
 
 ## 建议的实验思路
 
@@ -308,7 +358,7 @@ int main() {
     // 0b. 创建若干条 /24 直连路由
     for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
         RoutingTableEntry entry = {
-            .addr = addrs[i],
+            .addr = addrs[i] & 0x00FFFFFF, // big endian
             .len = 24,
             .if_index = i,
             .nexthop = 0 // means direct
@@ -367,7 +417,10 @@ int main() {
 
 ### 如何启动并配置一个比较标准的 RIP 实现
 
-你可以用一台 Linux 机器，连接到你的路由器的一个网口上，一边抓包一边运行一个 RIP 的实现。我们提供一个 BIRD（BIRD Internet Routing Daemon，安装方法 `apt install bird`）v2.0 的参考配置，以 Debian 为例，修改文件 `/etc/bird.conf`：
+你可以用一台 Linux 机器，连接到你的路由器的一个网口上，一边抓包一边运行一个 RIP 的实现。我们提供一个 BIRD（BIRD Internet Routing Daemon，安装方法 `apt install bird`）的参考配置，以 Debian 为例，如下修改文件 `/etc/bird.conf` 即可。
+
+<details>
+    <summary> BIRD v2.0 配置 </summary>
 
 ```
 # log "bird.log" all; # 可以将 log 输出到文件中
@@ -406,6 +459,11 @@ protocol rip {
 }
 ```
 
+</details>
+
+<details>
+    <summary> BIRD v1.6 配置 </summary>
+
 如果你用的是 v1.6 版本，有一些字段需要修改：
 
 ```
@@ -434,6 +492,8 @@ protocol rip {
     };
 }
 ```
+
+</details>
 
 这里的网口名字对应你连接到路由器的网口，也要配置一个固定的 IP 地址，需要和路由器对应网口的 IP 在同一个网段内。配置固定 IP 地址的命令格式为 `ip a add IP地址/前缀长度 dev 网口名称`，你可以用 `ip a` 命令看到所有网口的信息。
 
@@ -466,7 +526,7 @@ ip netns exec net1 ip addr add 10.1.1.2/24 dev veth-net1
 
 你还可以运行 `ip netns exec net0 [command]` 来执行任何你想在特定 namespace 下执行的命令，也可以运行 `ip netns exec net0 bash` 打开一个网络环境为 net0 的 bash。
 
-如果你在一个 netns 中用 Linux 自带的功能做转发，需要运行如下命令（root 身份，重启后失效）：
+如果你在一个 netns 中用 Linux 自带的功能做转发（例如 R1 和 R3），需要运行如下命令（root 身份，重启后失效）：
 
 ```
 echo 1 > /proc/sys/net/ipv4/conf/all/forwarding
@@ -537,9 +597,17 @@ Q: 我在 macOS 上安装了 Wireshark，但是报错找不到 tshark ？
 
 A: tshark 可能被安装到了 /Applications/Wireshark.app/Contents/MacOS/tshark 路径下，如果存在这个文件，把目录放到 PATH 环境变量里就可以了。
 
-## 附录：`ip` 命令的使用 
+Q: 为啥要用树莓派呢，电脑上装一个 Linux 双系统或者开个 Linux 虚拟机不好吗？
 
-在本文中几次提到了 `ip` 命令的使用，它的全名为 iproute2，是当前管理 Linux 操作系统网络最常用的命令之一。需要注意的是，涉及到更改的命令都需要 root 权限，所以需要在命令前加一个 `sudo ` 表示用 root 权限运行。
+A: 树莓派可以提供一个统一的环境，而且对同学的电脑的系统和硬盘空间没有什么要求，而虚拟机和双系统都需要不少的硬盘空间。另外，虚拟机的网络配置比树莓派要更加麻烦，一些同学的电脑也会因为没有开启虚拟化或者 Hyper-V 的原因运行不了 VirtualBox 和 VMWare，三种主流的虚拟机软件都有一些不同，让配置变得很麻烦。同时，树莓派的成熟度和文档都比较好，网上有很多完善的资料，学习起来并不困难，硬件成本也不高。
+
+Q: 我在 WSL 下编译 boilerplate，发现编译不通过，`checksum.cpp` 等几个 cpp 文件都不是合法的 cpp 代码。
+
+A: 这是因为在 Windows 里 git clone 的符号链接在 WSL 内看到的是普通文件，建议在 WSL 中进行 git clone 的操作，这样符号链接才是正确的。
+
+## 附录：`ip` 命令的使用
+
+在本文中几次提到了 `ip` 命令的使用，它的全名为 iproute2，是当前管理 Linux 操作系统网络最常用的命令之一。需要注意的是，涉及到更改的命令都需要 root 权限，所以需要在命令前加一个 `sudo ` （注意空格）表示用 root 权限运行。
 
 第一个比较重要的子命令是 `ip a`，它是 `ip addr` 的简写，意思是列出所有网口信息和地址信息，如：
 
@@ -594,7 +662,7 @@ default via another_ip dev interface 这里 default 代表 0.0.0.0/0 ，其实�
 
 首先下载 Raspbian 的镜像文件，推荐从[TUNA 镜像地址](https://mirrors.tuna.tsinghua.edu.cn/raspbian-images/raspbian/images/raspbian-2019-09-30/2019-09-26-raspbian-buster.zip)下载。下载完成后会得到一个 zip 格式的压缩包，解压后得到 img 文件。接着使用镜像烧录工具（如 Balena Etcher）把 img 文件写入到 SD 卡中。这个时候你的电脑上应该有一个名为 boot 的盘符，进入它的根目录，新建一个名为 `ssh` 的空文件，注意不要有后缀，它的功能是让树莓派自动启动 SSH 服务器。给树莓派插入 SD 卡，接通电源，应该可以看到红灯常亮，绿灯闪烁，表示正在读取 SD 卡。
 
-接着，拿一条网线，连接你的电脑（或者路由器）和树莓派的网口，这时候应该可以看到网口下面的状态灯亮起。以电脑为例，请打开网络共享，让树莓派可以上网，然后要找到树莓派分配到的 IP 地址，可以用 `arp -a` 命令列出各个网口上通过 ARP 发现过的设备，找到其中的树莓派的 IP 地址。记住它，然后用 SSH 的客户端，如 `ssh pi@$raspi_addr` ，其中 `$raspi_addr` 是树莓派的 IP 地址，如 `ssh pi@192.168.2.5` ，密码是 raspberry ，应该就可以登录进去了：
+接着，拿一条网线，连接你的电脑（或者路由器）和树莓派的网口，这时候应该可以看到网口下面的状态灯亮起。以电脑为例，请打开网络共享（[macOS 参考 1](https://support.apple.com/zh-cn/guide/mac-help/mchlp1540/mac)，[macOS 参考 2](https://medium.com/@tzhenghao/how-to-ssh-into-your-raspberry-pi-with-a-mac-and-ethernet-cable-636a197d055)，[Linux 参考](https://help.ubuntu.com/community/Internet/ConnectionSharing)，[Windows 参考 1](https://answers.microsoft.com/en-us/windows/forum/windows_10-networking/internet-connection-sharing-in-windows-10/f6dcac4b-5203-4c98-8cf2-dcac86d98fb9)，[Windows 参考 2](https://raspberrypi.stackexchange.com/questions/11684/how-can-i-connect-my-pi-directly-to-my-pc-and-share-the-internet-connection) ），让树莓派可以上网，然后要找到树莓派分配到的 IP 地址，可以用 `arp -a` 命令列出各个网口上通过 ARP 发现过的设备，找到其中的树莓派的 IP 地址。记住它，然后用 SSH 的客户端，如 `ssh pi@$raspi_addr` ，其中 `$raspi_addr` 是树莓派的 IP 地址，如 `ssh pi@192.168.2.5` ，密码是 raspberry ，应该就可以登录进去了：
 
 ```bash
 $ ssh pi@192.168.2.5
