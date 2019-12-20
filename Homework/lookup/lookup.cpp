@@ -32,28 +32,50 @@ uint32_t swapInt32(uint32_t value) {
 }
 
 void printRouteTable() {
-  printf("len \t if_index \t nexthop \t metric \t timestamp \n");
+  // char addr[5] = "addr";
+  // char nexthop[8] = "nexthop";
+  // char len[4] = "len";
+  // char if_index[9] = "if_index";
+  // char metric[7] = "metric";
+  // char timestamp[10] = "timestamp";
+  // printf("%16s%16s%10s%10s%10s%10s", addr, nexthop, len, if_index, metric, timestamp);
+  printf("addr \t\tnexthop \tlen \tif_index \tmetric \ttimestamp\n");
   for (auto i = routeTable.begin(); i != routeTable.end(); i++) {
     printIP(i->addr);
+    printf("\t");
     printIP(i->nexthop);
-    printf("\t%u\t%u\t%u\t%ul\n", i->len, i->if_index, swapInt32(i->metric), i->timestamp);
+    printf("\t");
+    if (i->nexthop == 0) {
+      printf("\t");
+    }
+    printf("%u\t%u\t\t%u\t%llu\n", i->len, i->if_index, swapInt32(i->metric), i->timestamp);
   }
 }
 
-void encapRip(RipPacket* resp) {
-  resp->numEntries = routeTable.size();
+void encapRip(RipPacket* resp, int learn_from) {
+  // resp->numEntries = routeTable.size();
   resp->command = 2;
   int i = 0;
+  // printf("learn_from: ");
+  // printIP(learn_from);
+  // printf("\n");
   for (auto routeEntry : routeTable) {
-    RipEntry entry = {
-      .addr = routeEntry.addr,
-      .mask = ((unsigned)1 << routeEntry.len) - 1,
-      .nexthop = routeEntry.nexthop,
-      .metric = routeEntry.metric
-    };
-    resp->entries[i] = entry;
-    i++;
+    // printf("learn_from: ");
+    // printIP(routeEntry.learn_from);
+    // printf("\n");
+    if (routeEntry.learn_from != learn_from) {
+      RipEntry entry = {
+        .addr = routeEntry.addr,
+        .mask = ((unsigned)1 << routeEntry.len) - 1,
+        .nexthop = routeEntry.nexthop,
+        .metric = routeEntry.metric
+      };
+      resp->entries[i] = entry;
+      i++;
+    }
   }
+  resp->numEntries = i;
+  // printf("number: %d\n", i);
 }
 
 /**
@@ -86,7 +108,7 @@ void update(bool insert, RoutingTableEntry entry) {
  * @param if_index 如果查询到目标，把表项的 if_index 写入
  * @return 查到则返回 true ，没查到则返回 false
  */
-bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t metric = swapInt32(16)) {
+bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t *metric) {
   // TODO:
   for (int j = 32; j >= 0; j--) {
     for (auto i : routeTable) {
@@ -99,10 +121,11 @@ bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t metric
       if ((i.len == j) && ((swapInt32(i.addr) & mask)) == (swapInt32(addr) & mask)) {
         *nexthop = i.nexthop;
         *if_index = i.if_index;
-        printf("metric: %08x i.metric: %08x\n", swapInt32(metric), swapInt32(i.metric));
-        if (swapInt32(i.metric) > swapInt32(metric) + 1) {
-          i.metric = swapInt32(swapInt32(metric) + 1);
-        }
+        *metric = i.metric;
+        // printf("metric: %08x i.metric: %08x\n", swapInt32(metric), swapInt32(i.metric));
+        // if (swapInt32(i.metric) > swapInt32(metric) + 1) {
+        //   i.metric = swapInt32(swapInt32(metric) + 1);
+        // }
         return true;
       }
     }

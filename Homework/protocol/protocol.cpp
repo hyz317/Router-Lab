@@ -115,19 +115,22 @@ uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
     buffer[begin + 5] = (rip->entries[i].addr >> 8) & 0x000000ff;
     buffer[begin + 6] = (rip->entries[i].addr >> 16) & 0x000000ff;
     buffer[begin + 7] = (rip->entries[i].addr >> 24) & 0x000000ff;
-    printIP(rip->entries[i].addr);
+    // printIP(rip->entries[i].addr);
+    // printf("\n");
 
     buffer[begin + 8] = rip->entries[i].mask & 0x000000ff;
     buffer[begin + 9] = (rip->entries[i].mask >> 8) & 0x000000ff;
     buffer[begin + 10] = (rip->entries[i].mask >> 16) & 0x000000ff;
     buffer[begin + 11] = (rip->entries[i].mask >> 24) & 0x000000ff;
-    printIP(rip->entries[i].mask);
+    // printIP(rip->entries[i].mask);
+    // printf("\n");
 
     buffer[begin + 12] = rip->entries[i].nexthop & 0x000000ff;
     buffer[begin + 13] = (rip->entries[i].nexthop >> 8) & 0x000000ff;
     buffer[begin + 14] = (rip->entries[i].nexthop >> 16) & 0x000000ff;
     buffer[begin + 15] = (rip->entries[i].nexthop >> 24) & 0x000000ff;
-    printIP(rip->entries[i].nexthop);
+    // printIP(rip->entries[i].nexthop);
+    // printf("\n");
 
     buffer[begin + 16] = rip->entries[i].metric & 0x000000ff;
     buffer[begin + 17] = (rip->entries[i].metric >> 8) & 0x000000ff;

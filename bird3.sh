@@ -1,0 +1,1 @@
+sudo ip netns exec R3 bird -d -c /etc/bird/bird3.conf -P bird3.pid -s bird3.socket
