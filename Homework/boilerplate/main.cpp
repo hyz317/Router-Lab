@@ -118,6 +118,7 @@ int main(int argc, char *argv[]) {
       }
       // end change
       printf("30s Timer\n");
+      // TODO: print complete routing table to stdout/stderr
       last_time = time;
     }
 
@@ -156,8 +157,7 @@ int main(int argc, char *argv[]) {
     }
 
     in_addr_t src_addr, dst_addr;
-    // extract src_addr and dst_addr from packet
-    // big endian
+    // TODO: extract src_addr and dst_addr from packet (big endian)
 
     // change here
     src_addr = (unsigned int)packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24);
@@ -187,8 +187,9 @@ int main(int argc, char *argv[]) {
       // check and validate
       if (disassemble(packet, res, &rip)) {
         if (rip.command == 1) {
-          // 3a.3 request, ref. RFC2453 3.9.1
+          // 3a.3 request, ref. RFC2453 Section 3.9.1
           // only need to respond to whole table requests in the lab
+
           RipPacket resp;
           // TODO: fill resp
           // assemble
@@ -203,7 +204,8 @@ int main(int argc, char *argv[]) {
           // ...
           // RIP
           uint32_t rip_len = assemble(&resp, &output[20 + 8]);
-          // checksum calculation for ip and udp
+
+          // TODO: checksum calculation for ip and udp
           // if you don't want to calculate udp checksum, set it to zero
           output[0] = 0x45;
           output[1] = 0xc0;
@@ -231,6 +233,7 @@ int main(int argc, char *argv[]) {
           output[25] = (rip_len + 8) & 0xff;
           output[26] = output[27] = 0;
           validateIPChecksum(output, rip_len + 20 + 8);
+
           // send it back
           HAL_SendIPPacket(if_index_global, output, rip_len + 20 + 8, src_mac);
           // printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, if_index);
@@ -240,13 +243,18 @@ int main(int argc, char *argv[]) {
           // }
           // printf("\n");
         } else {
-          // 3a.2 response, ref. RFC2453 3.9.2
-          // update routing table
+          // 3a.2 response, ref. RFC2453 Section 3.9.2
+          // TODO: update routing table
           // new metric = ?
           // update metric, if_index, nexthop
-          // what is missing from RoutingTableEntry?
-          // TODO: use query and update
-          // triggered updates? ref. RFC2453 3.10.1
+
+          // // what is missing from RoutingTableEntry?
+          // // TODO: use query and update
+          // // triggered updates? ref. RFC2453 3.10.1
+          // HINT: handle nexthop = 0 case
+          // HINT: what is missing from RoutingTableEntry?
+          // you might want to use `query` and `update` but beware of the difference between exact match and longest prefix match
+          // optional: triggered updates? ref. RFC2453 3.10.1
           uint32_t addr, len, if_index, nexthop, metric;
           for (int i = 0; i < rip.numEntries; i++) {
             for (len = 1; len <= 32; len++) {
@@ -320,6 +328,7 @@ int main(int argc, char *argv[]) {
               // printRouteTable();
             }
           }
+
         }
       }
     } else {
@@ -356,6 +365,7 @@ int main(int argc, char *argv[]) {
         printf("IP not found for ");
         printIP(src_addr);
         printf("\n");
+
       }
     }
   }
