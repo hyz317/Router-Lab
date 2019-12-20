@@ -46,3 +46,6 @@ sudo ip netns exec PC2 ip route add default via 192.168.5.2 dev pc2r3
 sudo ip netns exec R1 sysctl -w net.ipv4.ip_forward=1
 sudo ip netns exec R2 sysctl -w net.ipv4.ip_forward=0
 sudo ip netns exec R3 sysctl -w net.ipv4.ip_forward=1
+
+sudo ip netns exec PC1 ethtool -K pc1r1 tx off
+sudo ip netns exec PC2 ethtool -K pc2r3 tx off

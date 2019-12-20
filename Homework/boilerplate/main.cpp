@@ -75,10 +75,10 @@ int main(int argc, char *argv[]) {
       // ref. RFC2453 3.8
       // multicast MAC for 224.0.0.9 is 01:00:5e:00:00:09
       // change here
-      printRouteTable();
+      // printRouteTable();
       macaddr_t dest_mac;
       HAL_ArpGetMacAddress(0, (in_addr_t)((9 << 24) | 224), dest_mac);
-      printMAC(dest_mac);
+      // printMAC(dest_mac);
       for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
         RipPacket resp;
         // TODO: fill resp
@@ -139,16 +139,16 @@ int main(int argc, char *argv[]) {
       // packet is truncated, ignore it
       continue;
     }
-    printf("Got IP packet of length %d from port %d\n", res, if_index_global);
-    printf("Src MAC: ");
-    printMAC(src_mac);
-    printf("Dst MAC: ");
-    printMAC(dst_mac);
-    printf("\nData: ");
-    for (int i = 0; i < res; i++) {
-      printf("%02X ", packet[i]);
-    }
-    printf("\n");
+    // printf("Got IP packet of length %d from port %d\n", res, if_index_global);
+    // printf("Src MAC: ");
+    // printMAC(src_mac);
+    // printf("Dst MAC: ");
+    // printMAC(dst_mac);
+    // printf("\nData: ");
+    // for (int i = 0; i < res; i++) {
+    //   printf("%02X ", packet[i]);
+    // }
+    // printf("\n");
 
     // 1. validate
     if (!validateIPChecksum(packet, res)) {
@@ -162,12 +162,12 @@ int main(int argc, char *argv[]) {
     // change here
     src_addr = (unsigned int)packet[12] + (packet[13] << 8) + (packet[14] << 16) + (packet[15] << 24);
     dst_addr = (unsigned int)packet[16] + (packet[17] << 8) + (packet[18] << 16) + (packet[19] << 24);
-    printf("src addr: ");
-    printIP(src_addr);
-    printf("\n");
-    printf("dst addr: ");
-    printIP(dst_addr);
-    printf("\n");
+    // printf("src addr: ");
+    // printIP(src_addr);
+    // printf("\n");
+    // printf("dst addr: ");
+    // printIP(dst_addr);
+    // printf("\n");
     // 2. check whether dst is me
     bool dst_is_me = false;
     for (int i = 0; i < N_IFACE_ON_BOARD; i++) {

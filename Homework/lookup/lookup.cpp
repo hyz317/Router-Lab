@@ -31,6 +31,8 @@ uint32_t swapInt32(uint32_t value) {
          ((value & 0xff000000) >> 24);
 }
 
+int max_len = 0;
+
 void printRouteTable() {
   // char addr[5] = "addr";
   // char nexthop[8] = "nexthop";
@@ -95,6 +97,9 @@ void update(bool insert, RoutingTableEntry entry) {
     }
   }
   if (insert) {
+    if (entry.len > max_len) {
+      max_len = entry.len;
+    }
     routeTable.push_back(entry);
   } else {
 
@@ -110,7 +115,7 @@ void update(bool insert, RoutingTableEntry entry) {
  */
 bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t *metric) {
   // TODO:
-  for (int j = 32; j >= 0; j--) {
+  for (int j = max_len; j >= 0; j--) {
     for (auto i : routeTable) {
       // printf("%u %u %u %u\n", i.addr, i.len, i.if_index, i.nexthop);
       // printf("%u %u\n", swapInt32(i.addr), swapInt32(i.nexthop));
