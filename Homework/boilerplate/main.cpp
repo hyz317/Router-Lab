@@ -8,13 +8,13 @@
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
-extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t metric = 15);
+extern bool query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index, uint32_t *metric);
 extern bool forward(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
 extern uint32_t swapInt32(uint32_t value);
 
-extern void encapRip(RipPacket* resp);
+extern void encapRip(RipPacket* resp, int if_index);
 extern void printRouteTable();
 
 uint8_t packet[2048];
@@ -35,7 +35,7 @@ void printMAC(macaddr_t mac) {
 }
 
 void printIP(in_addr_t ip) {
-  printf("%d.%d.%d.%d\n",  ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, ip >> 24);
+  printf("%d.%d.%d.%d", ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, ip >> 24);
 }
 
 int main(int argc, char *argv[]) {
@@ -58,28 +58,13 @@ int main(int argc, char *argv[]) {
         .if_index = i,    // small endian
         .nexthop = 0,      // big endian, means direct
         .metric = 1 << 24,
-        .timestamp = HAL_GetTicks()
+        .timestamp = HAL_GetTicks(),
+        .learn_from = 100
     };
     update(true, entry);
   }
 
   printRouteTable();
-
-  // macaddr_t dest_mac;
-  // HAL_ArpGetMacAddress(0, (in_addr_t)((9 << 24) | 224), dest_mac);
-  // printMAC(dest_mac);
-  // RipPacket resp;
-  // // TODO: fill resp
-  // // assemble
-  // encapRip(&resp);
-  // printf("%u %u\n", resp.numEntries, resp.command);
-  // for (int i = 0; i < resp.numEntries; i++) {
-  //   printf("%u %u %u %u\n", resp.entries[i].addr, resp.entries[i].mask, resp.entries[i].nexthop, resp.entries[i].metric);
-  // }
-  // uint32_t res2 = assemble(&resp, &output[20 + 8]);
-  // for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
-  //   HAL_SendIPPacket(i, packet, res2, dest_mac);
-  // }
 
   uint64_t last_time = 0;
   while (1) {
@@ -94,67 +79,54 @@ int main(int argc, char *argv[]) {
       macaddr_t dest_mac;
       HAL_ArpGetMacAddress(0, (in_addr_t)((9 << 24) | 224), dest_mac);
       printMAC(dest_mac);
-      RipPacket resp;
-      // TODO: fill resp
-      // assemble
-      encapRip(&resp);
-      uint32_t rip_len = assemble(&resp, &output[20 + 8]);
-      // resp.command = 1;
-      // resp.numEntries = 1;
-      // resp.entries[0].addr = 0;
-      // resp.entries[0].mask = 0;
-      // resp.entries[0].nexthop = 0;
-      // resp.entries[0].metric = 1;
-      // uint32_t rip_len = assemble(&resp, &output[20 + 8]);
-
-      output[0] = 0x45;
-      output[1] = 0xc0;
-      output[2] = ((rip_len + 20 + 8) >> 8);
-      output[3] = (rip_len + 20 + 8) & 0xff;
-      output[4] = output[5] = 0x00;
-      output[6] = 0x40;
-      output[7] = 0x00;
-      output[8] = 0x04;
-      output[9] = 0x11;
-      output[10] = output[11] = 0x00;
-  
-      output[16] = 224;
-      output[17] = output[18] = 0;
-      output[19] = 9;
-      output[20] = 0x02;
-      output[21] = 0x08;
-      output[22] = 0x02;
-      output[23] = 0x08;
-      output[24] = ((rip_len + 8) >> 8);
-      output[25] = (rip_len + 8) & 0xff;
-      output[26] = output[27] = 0;
-
       for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
+        RipPacket resp;
+        // TODO: fill resp
+        // assemble
+        encapRip(&resp, i);
+        uint32_t rip_len = assemble(&resp, &output[20 + 8]);
+
+        output[0] = 0x45;
+        output[1] = 0xc0;
+        output[2] = ((rip_len + 20 + 8) >> 8);
+        output[3] = (rip_len + 20 + 8) & 0xff;
+        output[4] = output[5] = 0x00;
+        output[6] = 0x40;
+        output[7] = 0x00;
+        output[8] = 0x04;
+        output[9] = 0x11;
+        output[10] = output[11] = 0x00;
+    
+        output[16] = 224;
+        output[17] = output[18] = 0;
+        output[19] = 9;
+        output[20] = 0x02;
+        output[21] = 0x08;
+        output[22] = 0x02;
+        output[23] = 0x08;
+        output[24] = ((rip_len + 8) >> 8);
+        output[25] = (rip_len + 8) & 0xff;
+        output[26] = output[27] = 0;
+
+      // for (int i = 0; i < N_IFACE_ON_BOARD;i++) {
         output[12] = addrs[i] & 0xff;
         output[13] = (addrs[i] >> 8) & 0xff;
         output[14] = (addrs[i] >> 16) & 0xff;
         output[15] = (addrs[i] >> 24) & 0xff;
         validateIPChecksum(output, rip_len + 20 + 8);
         HAL_SendIPPacket(i, output, rip_len + 20 + 8, dest_mac);
-        // printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, i);
-        // printf("\nData: ");
-        // for (int i = 0; i < rip_len + 20 + 8; i++) {
-        //   printf("%02X ", output[i]);
-        // }
-        // printf("\n");
       }
       // end change
       printf("30s Timer\n");
-      // printRouteTable();
       last_time = time;
     }
 
     int mask = (1 << N_IFACE_ON_BOARD) - 1;
     macaddr_t src_mac;
     macaddr_t dst_mac;
-    int if_index;
+    int if_index_global;
     res = HAL_ReceiveIPPacket(mask, packet, sizeof(packet), src_mac, dst_mac,
-                              1000, &if_index);
+                              1000, &if_index_global);
     if (res == HAL_ERR_EOF) {
       break;
     } else if (res < 0) {
@@ -166,8 +138,7 @@ int main(int argc, char *argv[]) {
       // packet is truncated, ignore it
       continue;
     }
-    // change here
-    printf("Got IP packet of length %d from port %d\n", res, if_index);
+    printf("Got IP packet of length %d from port %d\n", res, if_index_global);
     printf("Src MAC: ");
     printMAC(src_mac);
     printf("Dst MAC: ");
@@ -177,19 +148,13 @@ int main(int argc, char *argv[]) {
       printf("%02X ", packet[i]);
     }
     printf("\n");
-    // end change
 
     // 1. validate
     if (!validateIPChecksum(packet, res)) {
       printf("Invalid IP Checksum\n");
       continue;
     }
-    //不是RIP协议包
-    // if (packet[11] != 0x11) {
-    //   printf("packet[11]: %d\n", packet[11]);
-    //   HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
-    //   continue;
-    // }
+
     in_addr_t src_addr, dst_addr;
     // extract src_addr and dst_addr from packet
     // big endian
@@ -227,7 +192,7 @@ int main(int argc, char *argv[]) {
           RipPacket resp;
           // TODO: fill resp
           // assemble
-          encapRip(&resp);
+          encapRip(&resp, if_index_global);
           // IP
           // output[0] = 0x45;
           // ...
@@ -267,13 +232,13 @@ int main(int argc, char *argv[]) {
           output[26] = output[27] = 0;
           validateIPChecksum(output, rip_len + 20 + 8);
           // send it back
-          HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
-          printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, if_index);
-          printf("\nData: ");
-          for (int i = 0; i < rip_len + 20 + 8; i++) {
-            printf("%02X ", output[i]);
-          }
-          printf("\n");
+          HAL_SendIPPacket(if_index_global, output, rip_len + 20 + 8, src_mac);
+          // printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, if_index);
+          // printf("\nData: ");
+          // for (int i = 0; i < rip_len + 20 + 8; i++) {
+          //   printf("%02X ", output[i]);
+          // }
+          // printf("\n");
         } else {
           // 3a.2 response, ref. RFC2453 3.9.2
           // update routing table
@@ -284,36 +249,75 @@ int main(int argc, char *argv[]) {
           // triggered updates? ref. RFC2453 3.10.1
           uint32_t addr, len, if_index, nexthop, metric;
           for (int i = 0; i < rip.numEntries; i++) {
-            printf("rip.entries[i].metric: %08x\n", rip.entries[i].metric);
-            if (query(rip.entries[i].addr, &nexthop, &if_index, rip.entries[i].metric)) {
-              // if (metric > rip.entries[i].metric + 1) {
-
-              // }
-            } else {
-              for (len = 1; len <= 32; len++) {
-                if ((rip.entries[i].mask >> len) == 0)
-                  break;
+            for (len = 1; len <= 32; len++) {
+              if ((rip.entries[i].mask >> len) == 0)
+                break;
+            }
+            if (query(rip.entries[i].addr, &nexthop, &if_index, &metric)) {
+              RoutingTableEntry entry = {
+                .addr = rip.entries[i].addr,
+                .len = len,
+                .if_index = if_index,
+                .nexthop = src_addr,
+                .metric = swapInt32(swapInt32(rip.entries[i].metric) + 1),
+                .timestamp = HAL_GetTicks(),
+                .learn_from = if_index_global
+              };
+              // printf("metric: %d\n", swapInt32(rip.entries[i].metric));
+              // nexthop与src_addr相同，无条件更新
+              if (nexthop == src_addr) {
+                // RoutingTableEntry entry = {
+                //   .addr = rip.entries[i].addr,
+                //   .len = len,
+                //   .if_index = if_index,
+                //   .nexthop = src_addr,
+                //   .metric = rip.entries[i].metric + 1,
+                //   .timestamp = HAL_GetTicks()
+                // };
+                // if (swapInt32(rip.entries[i].metric) == 16) {
+                //   // metric为16，则为毒性逆转，删除原路由
+                //   update(false, entry);
+                // } else {
+                update(true, entry);
+                // }
+              } else {
+                //nexthop与src_addr不相同，则比较metric决定是否更新
+                if (swapInt32(rip.entries[i].metric) + 1 < swapInt32(metric)) {
+                  update(true, entry);
+                }
               }
+              // metric为16，则为毒性逆转，删除原路由
+              // if (swapInt32(rip.entries[i].metric == 16)) {
+              //   update(false, entry);
+              // }
+              // printRouteTable();
+            } else {
+              //未查到路由表，添加记录
               for (int j = 0; j < N_IFACE_ON_BOARD; j++) {
                 if ((src_addr & rip.entries[i].mask) == (addrs[j] & rip.entries[i].mask)) {
                   if_index = j;
                   break;
                 }
               }
-              printf("mask: %08x\n", rip.entries[i].mask);
-              printf("len: %d\n", len);
-              printf("%d if_index: %08x src_addr: %08x\n", if_index, addrs[if_index], src_addr);
-              printf("%08x == %08x: %d \n", src_addr & rip.entries[i].mask, addrs[if_index] & rip.entries[i].mask, (src_addr & rip.entries[i].mask) == (addrs[if_index] & rip.entries[i].mask));
+              if (if_index > 3) {
+                printf("warning: wrong if_index\n");
+              }
+              // printf("mask: %08x\n", rip.entries[i].mask);
+              // printf("len: %d\n", len);
+              // printf("%d if_index: %08x src_addr: %08x\n", if_index, addrs[if_index], src_addr);
+              // printf("%08x == %08x: %d \n", src_addr & rip.entries[i].mask, addrs[if_index] & rip.entries[i].mask, (src_addr & rip.entries[i].mask) == (addrs[if_index] & rip.entries[i].mask));
               RoutingTableEntry entry = {
                 .addr = rip.entries[i].addr,
                 .len = len,
                 .if_index = if_index,
                 .nexthop = src_addr,
-                .metric = swapInt32(swapInt32(rip.entries[i].metric) + 1 > 16 ? 16 : swapInt32(rip.entries[i].metric) + 1),
-                .timestamp = HAL_GetTicks()
+                .metric = swapInt32(swapInt32(rip.entries[i].metric) + 1),
+                .timestamp = HAL_GetTicks(),
+                .learn_from = if_index_global
               };
-              update(true, entry);
-              printRouteTable();
+              if (swapInt32(entry.metric) < 15) // 大于16则为毒性逆转
+                update(true, entry);
+              // printRouteTable();
             }
           }
         }
@@ -322,8 +326,8 @@ int main(int argc, char *argv[]) {
       // 3b.1 dst is not me
       // forward
       // beware of endianness
-      uint32_t nexthop, dest_if;
-      if (query(dst_addr, &nexthop, &dest_if)) {
+      uint32_t nexthop, dest_if, metric;
+      if (query(dst_addr, &nexthop, &dest_if, &metric)) {
         // found
         macaddr_t dest_mac;
         // direct routing
@@ -336,21 +340,22 @@ int main(int argc, char *argv[]) {
           // update ttl and checksum
           forward(output, res);
           // TODO: you might want to check ttl=0 case
-          printf("ttl: %u\n", output[8]);
           if (output[8] != 0)
             HAL_SendIPPacket(dest_if, output, res, dest_mac);
         } else {
           // not found
           // you can drop it
-          printf("dest_if: %d\n", dest_if);
+          // printf("dest_if: %d\n", dest_if);
           printf("%d ARP not found for ", HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac));
           printIP(nexthop);
+          printf("\n");
         }
       } else {
         // not found
         // optionally you can send ICMP Host Unreachable
         printf("IP not found for ");
         printIP(src_addr);
+        printf("\n");
       }
     }
   }
