@@ -26,7 +26,7 @@ uint8_t output[2048];
 // 你可以按需进行修改，注意端序
 // in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a, 0x0102000a,
 //                                      0x0103000a};
-in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0203a8c0, 0x0104a8c0, 0x0102000a,
+in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0204a8c0, 0x0205a8c0, 0x0102000a,
                                      0x0103000a};
 
 void printMAC(macaddr_t mac) {
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
       // ref. RFC2453 3.8
       // multicast MAC for 224.0.0.9 is 01:00:5e:00:00:09
       // change here
-      // printRouteTable();
+      printRouteTable();
       macaddr_t dest_mac;
       HAL_ArpGetMacAddress(0, (in_addr_t)((9 << 24) | 224), dest_mac);
       // printMAC(dest_mac);
@@ -115,6 +115,13 @@ int main(int argc, char *argv[]) {
         output[15] = (addrs[i] >> 24) & 0xff;
         validateIPChecksum(output, rip_len + 20 + 8);
         HAL_SendIPPacket(i, output, rip_len + 20 + 8, dest_mac);
+        printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, i);
+        printIP(addrs[i]);
+        printf("\nData: ");
+        for (int j = 0; j < rip_len + 20 + 8; j++) {
+          printf("%02X ", output[j]);
+        }
+        printf("\n");
       }
       // end change
       printf("30s Timer\n");
@@ -236,7 +243,7 @@ int main(int argc, char *argv[]) {
 
           // send it back
           HAL_SendIPPacket(if_index_global, output, rip_len + 20 + 8, src_mac);
-          // printf("send IP packet of length %d from port %d\n", rip_len + 20 + 8, if_index);
+          // printf("send IP packet of length %d from port \n", rip_len + 20 + 8/*, if_index*/);
           // printf("\nData: ");
           // for (int i = 0; i < rip_len + 20 + 8; i++) {
           //   printf("%02X ", output[i]);
